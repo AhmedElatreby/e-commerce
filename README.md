@@ -38,7 +38,6 @@ Abstract: A REST API for online e-commerce system
 |—— Database
 |—— E-Commerce ERD.svg
 |—— node_modules
-|    
 |—— package-lock.json
 |—— package.json
 |—— Routes
