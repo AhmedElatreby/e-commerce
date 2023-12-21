@@ -21,7 +21,10 @@ Abstract: A REST API for online e-commerce system
 - Redis
 
 ## Entity Relationship Diagram:
-![Alt text](<E-Commerce ERD.jpeg>)
+
+<div align="center">
+  <img src="E-Commerce ERD.png" alt="Database Schema">
+</div>
 
 
 
