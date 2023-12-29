@@ -5,11 +5,13 @@ const userRoutes = require("./Routes/user_routes");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+app.use(express.json()); 
+
 app.get("/", (req, res) => {
   res.send("Hello, World");
 });
 
-app.use("/api/v1/ec", userRoutes);
+app.use("/api/v1/user", userRoutes);
 app.listen(PORT, () => {
   console.log(`Server started at http://localhost:${PORT}`);
 });
