@@ -5,124 +5,150 @@ const bcrypt = require("bcrypt");
 const getUserById = (req, res) => {
   const id = parseInt(req.params.id);
   pool.query(queries.getUserById, [id], (error, results) => {
-    if (error) throw error;
-    res.status(200).json(results.rows);
+    handleQueryResponse(res, error, results);
   });
 };
 
 const getUsers = (req, res) => {
   pool.query(queries.getUsers, (error, results) => {
-    if (error) throw error;
-    res.status(200).json(results.rows);
+    handleQueryResponse(res, error, results);
   });
 };
 
-const addUser = (req, res) => {
+const addUser = async (req, res) => {
   const { username, password, first_name, last_name, email } = req.body;
-
-  // Check if the user exists
-  pool.query(queries.checkEmailExists, [email], async (error, results) => {
-    if (error) {
-      console.error("Error checking email existence:", error);
-      res.status(500).send("Internal Server Error");
-      return;
-    }
-
-    if (results.rows.length) {
+  try {
+    const userExists = await checkUserExists(email);
+    if (userExists) {
       res.status(400).send(`User ${email} already exists.`);
       return;
     }
 
-    try {
-      // hash password
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(password, salt);
-
-      // add user into db
-      pool.query(
-        queries.addUser,
-        [username, hashedPassword, first_name, last_name, email],
-        (error, results) => {
-          if (error) {
-            console.error("Error adding user to the database:", error);
-            res.status(500).send("Internal Server Error");
-            return;
-          }
-
-          res.status(201).send(`User ${username} added into db successfully.`);
-        }
-      );
-    } catch (hashError) {
-      console.error("Error hashing password:", hashError);
-      res.status(500).send("Internal Server Error");
-    }
-  });
+    const hashedPassword = await hashPassword(password);
+    await addUserToDB(
+      res,
+      username,
+      hashedPassword,
+      first_name,
+      last_name,
+      email
+    );
+  } catch (error) {
+    console.error("Error processing add user request:", error);
+    res.status(500).send("Internal Server Error");
+  }
 };
 
-// update user
-const updateUser = (req, res) => {
+const updateUser = async (req, res) => {
   const { username, password, first_name, last_name, email } = req.body;
   const id = parseInt(req.params.id);
-  // check if user already exists
-  pool.query(queries.getUserById, [id], async (error, results) => {
-    if (error) {
-      console.error("Error checking user existence:", error);
-      res.status(500).send("Internal Server Error");
-      return;
-    }
 
-    if (results.rows.length === 0) {
+  try {
+    const userExists = await checkUserExists(id);
+    if (!userExists) {
       res.status(404).send(`User with ID ${id} not found.`);
       return;
     }
 
-    try {
-      // If a new password provided, hash it
-      let hashedPassword = results.rows[0].password;
-
-      if (password) {
-        const salt = await bcrypt.genSalt(10);
-        hashedPassword = await bcrypt.hash(password, salt);
-      }
-      // Update user in db
-      pool.query(
-        queries.updateUser,
-        [username, hashedPassword, first_name, last_name, email, id],
-        (error, results) => {
-          if (error) {
-            console.error("Error updating user in the database:", error);
-            res.status(500).send("Internal Server Error");
-            return;
-          }
-          res.status(200).send(`User with ID ${id} updated successfully.`);
-        }
-      );
-    } catch (error) {
-      console.error("Error hashing password:", error);
-      res.status(500).send("Internal Server Error");
-    }
-  });
+    const hashedPassword = password ? await hashPassword(password) : undefined;
+    await updateUserInDB(
+      res,
+      id,
+      username,
+      hashedPassword,
+      first_name,
+      last_name,
+      email
+    );
+  } catch (error) {
+    console.error("Error processing update user request:", error);
+    res.status(500).send("Internal Server Error");
+  }
 };
 
-// delete user
-const deleteUser = (req, res) => {
+const deleteUser = async (req, res) => {
   const id = parseInt(req.params.id);
 
-  // check if user exists
-  pool.query(queries.deleteUser, [id], (error, results) => {
-    const noUserFound = !results.rows.length;
-    if (error) {
-      console.error("Error deleting user from the database:", error);
-      res.status(500).send("Internal Server Error");
-      return;
-    }
-    const deletedRowCount = results.rowCount;
+  try {
+    const deletedRowCount = await deleteUserFromDB(res, id);
     if (deletedRowCount === 0) {
       res.status(404).send(`User with ID ${id} not found.`);
     } else {
       res.status(200).send(`User with id: ${id} deleted successfully`);
     }
-  });
+  } catch (error) {
+    console.error("Error processing delete user request:", error);
+    res.status(500).send("Internal Server Error");
+  }
+};
+
+// Helper functions
+
+const handleQueryResponse = (res, error, results) => {
+  if (error) {
+    console.error("Error executing database query:", error);
+    res.status(500).send("Internal Server Error");
+  } else {
+    res.status(200).json(results.rows);
+  }
+};
+
+const checkUserExists = async (identifier) => {
+  const client = await pool.connect();
+  try {
+    const results = await client.query(queries.checkEmailExists, [identifier]);
+    return results.rows.length > 0;
+  } finally {
+    client.release();
+  }
+};
+
+const hashPassword = async (password) => {
+  const salt = await bcrypt.genSalt(10);
+  return bcrypt.hash(password, salt);
+};
+
+const addUserToDB = async (
+  res,
+  username,
+  hashedPassword,
+  first_name,
+  last_name,
+  email
+) => {
+  const results = await pool.query(queries.addUser, [
+    username,
+    hashedPassword,
+    first_name,
+    last_name,
+    email,
+  ]);
+  res.status(201).send(`User ${username} added into db successfully.`);
+};
+
+const updateUserInDB = async (
+  res,
+  id,
+  username,
+  hashedPassword,
+  first_name,
+  last_name,
+  email
+) => {
+  await pool.query(queries.updateUser, [
+    username,
+    hashedPassword,
+    first_name,
+    last_name,
+    email,
+    id,
+  ]);
+  res.status(200).send(`User with ID ${id} updated successfully.`);
+};
+
+const deleteUserFromDB = async (res, id) => {
+  const results = await pool.query(queries.deleteUser, [id]);
+  return results.rowCount;
 };
 
 module.exports = {
