@@ -1,11 +1,32 @@
-const pool = require("../Database/db");
+const pool = require("../Database/dbConfig");
 const queries = require("../Database/user_queries");
 const bcrypt = require("bcrypt");
 
+const profilePage = (req, res) => {
+  res.render("profile", { user: req.user });
+  console.log(req.session);
+};
+
 const getUserById = (req, res) => {
   const id = parseInt(req.params.id);
+
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid user ID" });
+    return;
+  }
+
   pool.query(queries.getUserById, [id], (error, results) => {
-    if (error) throw error;
+    if (error) {
+      console.error("Error querying user by ID:", error);
+      res.status(500).send("Internal Server Error");
+      return;
+    }
+
+    if (results.rows.length === 0) {
+      res.status(404).send(`User with ID ${id} not found.`);
+      return;
+    }
+
     res.status(200).json(results.rows);
   });
 };
@@ -17,6 +38,7 @@ const getUsers = (req, res) => {
   });
 };
 
+// add user
 const addUser = (req, res) => {
   const { username, password, first_name, last_name, email } = req.body;
 
@@ -40,7 +62,7 @@ const addUser = (req, res) => {
 
       // add user into db
       pool.query(
-        queries.addUser,
+        queries.createUser, // Corrected query name here
         [username, hashedPassword, first_name, last_name, email],
         (error, results) => {
           if (error) {
@@ -131,4 +153,5 @@ module.exports = {
   addUser,
   updateUser,
   deleteUser,
+  profilePage,
 };
